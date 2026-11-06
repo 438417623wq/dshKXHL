@@ -11,7 +11,9 @@ const MOCK = {
   port: 8765,
   code: 'a1b2c3d4',
   targetAuthority: '127.0.0.1:53219',
-  hasToken: false,
+  hasToken: true,
+  hasSession: true,
+  tokenSource: 'launch',
   autoStart: true,
   link: 'http://192.168.2.86:8765/__dshrl_pair?code=a1b2c3d4',
   lan: [
@@ -32,7 +34,7 @@ const MOCK = {
   ],
   lastError: null,
   node: 'win32 x64',
-  version: '0.1.0',
+  version: '0.2.0',
 }
 
 window.__MOCK = MOCK

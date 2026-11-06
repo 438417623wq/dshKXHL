@@ -18,7 +18,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readFileSync } from 'node:fs'
+import net from 'node:net'
 import vm from 'node:vm'
+import { createConnector } from '../lib/connector.js'
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 
@@ -188,6 +190,11 @@ const hostCtx = {
         return () => { registered = null }
       },
     },
+    // 真宿主里 ConnectionService 公开的就是这个方法：把本进程 launch token
+    // 拼进 URL 返回。插件靠它自动鉴权，用户不需要手抄 token。
+    authenticatedUrl(baseUrl) {
+      return `${baseUrl}?token=selftest-launch-token`
+    },
   },
   effect(fn) {
     const dispose = fn()
@@ -235,6 +242,10 @@ ok('start 成功', sStart?.ok === true, JSON.stringify(sStart))
 ok('启动后 running=true', sStart?.value?.running === true)
 eq('生成了 8 位配对码', sStart?.value?.code?.length, 8)
 ok('给出连接串', String(sStart?.value?.link || '').includes('__dshrl_pair?code='), sStart?.value?.link)
+
+eq('自动拿到了 launch token', sStart?.value?.hasToken, true)
+eq('token 来源标记为 launch', sStart?.value?.tokenSource, 'launch')
+ok('快照里不暴露 token 值', !JSON.stringify(sStart.value).includes('selftest-launch-token'))
 
 const code = sStart.value.code
 
@@ -294,6 +305,147 @@ ok('停止后 running=false', sStop?.value?.running === false)
 
 const unknown = await rpc('nope')
 ok('未知动作返回错误', unknown?.ok === false)
+
+// ══════════════════════════════════════════════════════════════════════════
+// 3. 上游鉴权：连接器自己用 launch token 换会话 cookie
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 真机上踩到的现象：手机连上了、配对也过了，页面却是纯文本
+//
+//     dsh web authentication required; reopen the URL printed by dsh web.
+//
+// 因为 DSH webServer 对每个请求校验一个**签名 cookie**，而 cookie 只能用
+// 进程 launch token 换，且绑定了签发时的 authority。所以连接器必须自己持有
+// 会话：进来时换一次 cookie，之后每条转发都注入 —— 手机侧全程看不到 token。
+lines.push('[3] 上游鉴权（launch token → 会话 cookie）')
+
+const LAUNCH = 'launch-token-for-selftest'
+const AUTH_COOKIE = 'dsh_session'
+let mintCount = 0
+let validCookie = ''
+
+const authUpstream = http.createServer((req, res) => {
+  const url = new URL(req.url || '/', 'http://dsh.invalid')
+  const cookie = String(req.headers.cookie || '')
+  if (url.pathname === '/' && url.searchParams.get('token') === LAUNCH) {
+    mintCount += 1
+    validCookie = `${AUTH_COOKIE}=gen-${mintCount}`
+    res.writeHead(303, { 'set-cookie': `${validCookie}; Path=/; HttpOnly`, location: './' })
+    res.end()
+    return
+  }
+  if (!validCookie || !cookie.includes(validCookie)) {
+    res.writeHead(401, { 'content-type': 'text/plain; charset=utf-8' })
+    res.end('dsh web authentication required; reopen the URL printed by dsh web.\n')
+    return
+  }
+  res.writeHead(200, {
+    'content-type': 'text/plain; charset=utf-8',
+    'x-upstream-host': String(req.headers.host),
+    'x-upstream-cookie': cookie,
+  })
+  res.end('DSH APP OK')
+})
+await new Promise((r) => authUpstream.listen(0, '127.0.0.1', r))
+const authPort = authUpstream.address().port
+
+function hitPort(port, path, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => {
+      let body = ''
+      res.setEncoding('utf8')
+      res.on('data', (d) => { body += d })
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }))
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
+
+// ── 3.1 没有 token：症状必须能复现（否则后面的断言等于没测到东西）─────────
+const noTokPort = 18766
+const noTok = createConnector({ port: noTokPort, targetHost: '127.0.0.1', targetPort: authPort, code: 'aaaa1111' })
+await noTok.listen()
+const pairNoTok = await hitPort(noTokPort, '/?code=aaaa1111')
+const noTokCookie = String(pairNoTok.headers['set-cookie'] || '').split(';')[0]
+const noTokHit = await hitPort(noTokPort, '/', { cookie: noTokCookie })
+eq('无 token → 上游 401 原样回来', noTokHit.status, 401)
+ok('401 正文就是手机看到的那句', noTokHit.body.includes('dsh web authentication required'), noTokHit.body.slice(0, 80))
+await noTok.close()
+
+// ── 3.2 有 token：连接器换 cookie 后放行 ─────────────────────────────────
+const TOKEN_PORT = 18767
+const conn = createConnector({ port: TOKEN_PORT, targetHost: '127.0.0.1', targetPort: authPort, code: 'bbbb2222', token: LAUNCH })
+await conn.listen()
+
+const pair = await hitPort(TOKEN_PORT, '/?code=bbbb2222')
+const pairCookie = String(pair.headers['set-cookie'] || '').split(';')[0]
+ok('配对 cookie 已下发', pairCookie.startsWith('dshrl_pair='), pairCookie)
+
+const authed = await hitPort(TOKEN_PORT, '/', { cookie: pairCookie })
+eq('有 token → 200', authed.status, 200)
+ok('拿到上游正文', authed.body.includes('DSH APP OK'), authed.body.slice(0, 60))
+eq('换了一次会话', mintCount, 1)
+eq('Host 依旧是上游 authority', authed.headers['x-upstream-host'], `127.0.0.1:${authPort}`)
+ok('注入的上游 cookie 到上游了', String(authed.headers['x-upstream-cookie']).includes('dsh_session='), String(authed.headers['x-upstream-cookie']))
+
+// 会话 cookie 只活在连接器内存里：不能以任何形式落到手机侧。
+ok('响应里没有上游 Set-Cookie', !authed.headers['set-cookie'], JSON.stringify(authed.headers['set-cookie']))
+ok('配对 cookie 没泄露给上游', !String(authed.headers['x-upstream-cookie']).includes('dshrl_pair='), String(authed.headers['x-upstream-cookie']))
+ok('手机侧看不到 token', !authed.body.includes(LAUNCH))
+
+const snap = conn.snapshot()
+ok('快照报 hasToken', snap.hasToken === true)
+ok('快照报 hasSession', snap.hasSession === true)
+
+// ── 3.3 会话中途失效：自动重换一次，用户无感 ─────────────────────────────
+validCookie = 'dsh_session=rotated-by-server'
+const afterExpire = await hitPort(TOKEN_PORT, '/', { cookie: pairCookie })
+eq('会话失效后仍然 200', afterExpire.status, 200)
+eq('重换了一次会话', mintCount, 2)
+
+// ── 3.4 WebSocket 握手同样要注入会话 ─────────────────────────────────────
+function upgradeProbe(port, cookie) {
+  return new Promise((resolve) => {
+    const sock = net.connect(port, '127.0.0.1', () => {
+      sock.write(
+        [
+          'GET /ws HTTP/1.1',
+          `Host: 127.0.0.1:${port}`,
+          `Cookie: ${cookie}`,
+          'Upgrade: websocket',
+          'Connection: Upgrade',
+          'Sec-WebSocket-Version: 13',
+          'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+          '',
+          '',
+        ].join('\r\n'),
+      )
+    })
+    let buf = ''
+    sock.setEncoding('utf8')
+    sock.on('data', (d) => {
+      buf += d
+      if (buf.includes('\r\n')) {
+        sock.destroy()
+        resolve(buf.split('\r\n')[0])
+      }
+    })
+    sock.on('error', () => resolve('ERROR'))
+    sock.on('close', () => resolve(buf.split('\r\n')[0] || 'CLOSED'))
+    setTimeout(() => { sock.destroy(); resolve(buf.split('\r\n')[0] || 'TIMEOUT') }, 1500)
+  })
+}
+
+// 假上游不实现真升级，但握手仍走「会话校验」这一关：带 cookie 时放行（这里
+// 回 200 表示认证通过但拒绝升级），不带时 401。断言点就是这个区别。
+const wsAuthed = await upgradeProbe(TOKEN_PORT, pairCookie)
+ok('握手带了会话（不是 401）', !String(wsAuthed).includes('401'), String(wsAuthed))
+
+await conn.close()
+
+
+authUpstream.close()
 
 // 清理
 for (const dispose of hostEffects) {

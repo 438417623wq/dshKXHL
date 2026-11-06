@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-link",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "DSH 桌面端插件：把「手机远程接入电脑」变成一块可视化面板 —— 一键开关接入服务、配对码与二维码、已连设备与断开。",
   "type": "module",

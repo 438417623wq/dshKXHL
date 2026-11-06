@@ -91,10 +91,11 @@ node scripts/install.mjs --dry-run
 | 手机打开报「需要配对码」 | 连接串只复制了 IP，丢了 `?code=` | 复制整条连接串（面板上有「复制」按钮） |
 | 昨天能连，今天不行 | 换过配对码，或 DSH 重启后端口变了 | 重新扫码 |
 | 能进界面但对话不更新 | WebSocket 被中间设备拦了 | 换端口试；企业网络的代理常拦 upgrade |
-| 打开是 401、或一直空白 | 这种部署的上游要 `?token=` 换 cookie | 把 token 填进面板「高级」，再重新扫码 |
+| 打开是全屏一句 `dsh web authentication required; reopen the URL printed by dsh web.` | 上游没拿到会话 cookie（v0.1.x 的已知缺陷） | 升级到 **v0.2.0+**：插件会自动取本进程 launch token 并换会话；在面板「高级」里能看到「鉴权方式 / 上游会话」两行 |
+| 面板「鉴权方式」显示「未取到」 | 这个 DSH 版本的 ConnectionService 没暴露 `authenticatedUrl` | 在「高级」里手工填一次 token，或回退到命令行连接器 |
 | 断开后几秒又连上 | 配对凭证是整站一个，断开只是断 socket | 想彻底断开请「换一个」配对码 |
 
-自查（不依赖 DSH，49 项断言，会真起一个假上游走一遍配对门与转发）：
+自查（不依赖 DSH，68 项断言，会真起一个假上游走一遍配对门与转发）：
 
 ```bash
 node scripts/selftest.mjs
@@ -147,8 +148,10 @@ scripts/          安装器、构建、自测、预览
   浏览器几秒后会自己重连；真正的吊销手段是「换一个」配对码。
 - 设备是按 `IP + User-Agent` 归并的，同一个 NAT 后面同型号手机可能被算成一台。
 - 「断开」按远端 IP 批量断 socket，同一 NAT 后的多台设备会一起断。
-- 上游需要 `?token=` 的部署（少见），把 token 填进面板「高级」里；不填就只是
-  普通转发。
+- **鉴权靠 DSH 自己的 launch token**，插件调 `ctx.connection.authenticatedUrl()`
+  自动取，然后用它向本机换一个签名 cookie 存在连接器内存里；手机侧拿不到 token，
+  也拿不到上游 cookie。前提是那个 DSH 版本仍公开这个方法 —— 没有的话面板会显示
+  「鉴权方式：未取到」，此时可在「高级」里手工填 token 兜底。
 - 只支持 `http://` 上游 —— TLS 交给隧道负责，插件不碰证书。
 
 ## License
