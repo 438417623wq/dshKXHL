@@ -41,6 +41,45 @@ function btn(cls, props, ...kids) {
   return h('button', { type: 'button', className: cls, ...props }, ...kids)
 }
 
+/**
+ * 一条外网通道。
+ *
+ * 「装了但没登录」和「没装」必须分开显示：前者用户去点一下登录就好，
+ * 后者要先去下载。合成一句「不可用」的话，人不知道下一步该干嘛 ——
+ * 这个面板踩过一次同样的坑（上游不可达 vs 没启动，现在还在拆）。
+ */
+function tunnelRow(t, onCopy) {
+  const badge = t.ready ? '可用' : t.installed ? '未就绪' : '未安装'
+  const badgeCls = t.ready ? 'is-ok' : t.installed ? 'is-warn' : 'is-off'
+  return h(
+    'div',
+    { className: 'dshrl-tun', key: t.kind },
+    h(
+      'div',
+      { className: 'dshrl-tun-head' },
+      span('dshrl-tun-name', t.label),
+      span(`dshrl-badge ${badgeCls}`, badge),
+    ),
+    t.url
+      ? h(
+          'div',
+          { className: 'dshrl-link' },
+          span('dshrl-link-text', t.url),
+          btn('dshrl-btn dshrl-btn-sm', { onClick: () => onCopy(t.url) }, '复制'),
+        )
+      : null,
+    t.command
+      ? h(
+          'div',
+          { className: 'dshrl-link' },
+          span('dshrl-link-text', t.command),
+          btn('dshrl-btn dshrl-btn-sm', { onClick: () => onCopy(t.command) }, '复制'),
+        )
+      : null,
+    h('div', { className: 'dshrl-sub' }, t.hint),
+  )
+}
+
 /** 「3 分钟前」这种相对时间。 */
 function ago(ts) {
   if (!ts) return '—'
@@ -260,6 +299,7 @@ export function RemoteLinkPanel({ rpcCall }) {
   const liveCount = devices.filter((d) => d.live > 0).length
 
   const link = data?.link || ''
+  const tunnels = data?.tunnels ?? []
   const qr = React.useMemo(() => (link ? qrPath(link) : ''), [link])
   const qrCount = React.useMemo(() => (link ? qrSize(link) : 25), [link])
 
@@ -503,6 +543,47 @@ export function RemoteLinkPanel({ rpcCall }) {
               '在 Kxxy 里：概览 → 远程控制 → 添加电脑 → 粘贴连接串。或者直接扫左边的二维码。',
             ),
             h('li', null, '连上后手机就落在 DSH 的界面上，对话、会话、文件都能用。'),
+          ),
+        ),
+
+        // 外网接入
+        h(
+          Card,
+          { title: '在外网也能连', hint: tunnels.some((t) => t.ready) ? '有可用通道' : '' },
+          h(
+            'div',
+            { className: 'dshrl-sub', style: { marginBottom: '4px' } },
+            '手机不在同一个 WiFi 时，需要一条能穿出去的路。这里探测的是电脑上已经装好的工具 —— 插件只读地址，不代管进程：隧道什么时候开、什么时候关，仍然归那个工具自己，不会出现「面板关了隧道还在跑」。',
+          ),
+          tunnels.length
+            ? div('dshrl-tuns', ...tunnels.map((t) => tunnelRow(t, onCopy)))
+            : div('dshrl-empty', '暂时没有探测到可用的外网通道。'),
+          h(
+            'div',
+            { style: { marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+            btn(
+              'dshrl-btn dshrl-btn-sm',
+              { disabled: busy === 'refreshTunnel', onClick: () => run('refreshTunnel') },
+              '重新检测',
+            ),
+            // 下载页直接给出来。面板里写「去装 Tailscale」却不给地址，
+            // 等于让人自己去搜 —— 搜到的第一屏经常是别家的同名产品。
+            ...tunnels
+              .filter((t) => !t.ready && t.installUrl)
+              .map((t) =>
+                h(
+                  'a',
+                  {
+                    key: `get-${t.kind}`,
+                    className: 'dshrl-btn dshrl-btn-sm dshrl-btn-ghost',
+                    href: t.installUrl,
+                    target: '_blank',
+                    rel: 'noopener',
+                    style: { textDecoration: 'none' },
+                  },
+                  `${t.installed ? '去登录' : '下载'} ${t.label}`,
+                ),
+              ),
           ),
         ),
 

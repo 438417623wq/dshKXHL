@@ -259,6 +259,53 @@ const CSS = `
   color: var(--dsw-alias-state-success-primary, #37c26a);
 }
 
+/* 外网通道的三种状态。用颜色区分「可用 / 未就绪 / 未安装」——
+   文字标签本身已经说清了，颜色只是让眼睛先扫到哪条能点。 */
+.dshrl-badge.is-ok {
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary, #37c26a) 18%, transparent);
+  color: var(--dsw-alias-state-success-primary, #37c26a);
+}
+.dshrl-badge.is-warn {
+  background: color-mix(in srgb, var(--dsw-alias-state-warning-primary, #f5a623) 18%, transparent);
+  color: var(--dsw-alias-state-warning-primary, #f5a623);
+}
+.dshrl-badge.is-off {
+  background: var(--dsw-alias-bg-layer-3, #2a2a30);
+  color: var(--dsw-alias-label-tertiary, #8b8b93);
+}
+
+.dshrl-tuns {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dshrl-tun {
+  border: 1px solid var(--dsw-alias-border-l2, #33333a);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1, #17171a);
+  padding: 10px 12px;
+}
+.dshrl-tun-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dshrl-tun-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary, #fff);
+}
+/* 卡片里已经有边框了，里面这条地址不能再叠一层视觉重量 */
+.dshrl-tun .dshrl-link {
+  margin-top: 8px;
+  background: var(--dsw-alias-bg-layer-2, #1f1f24);
+}
+.dshrl-tun .dshrl-sub {
+  margin-top: 8px;
+}
+
 .dshrl-empty {
   padding: 18px 0 8px;
   text-align: center;

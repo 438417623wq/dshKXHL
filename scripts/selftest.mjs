@@ -454,6 +454,58 @@ for (const dispose of hostEffects) {
 await new Promise((r) => upstream.close(r))
 rmSync(sandboxHome, { recursive: true, force: true })
 
+// ── 外网通道探测 ──────────────────────────────────────────────────────────
+// 只测纯函数那一半：本机装没装 Tailscale 属于环境事实，不能拿来当断言前提
+// （CI 上一定没装）。真正要钉的是「什么时候可以给出地址」这条边界 ——
+// 没就绪却给了 url，手机就会照着一条连不上的地址去扫。
+const { detectTunnels, tunnelLinks, resetTunnelCache } = await import('../lib/tunnel.js')
+
+resetTunnelCache()
+const detected = detectTunnels({ force: true })
+ok(
+  '探测固定返回两条通道，顺序稳定',
+  detected.length === 2 && detected[0].kind === 'tailscale' && detected[1].kind === 'cloudflare',
+  JSON.stringify(detected.map((t) => t.kind)),
+)
+ok('每条都带 label / hint / installUrl', detected.every((t) => t.label && t.hint && t.installUrl))
+ok('cloudflared 永远不 ready（域名要起进程才知道，且每次重启都变）', detected[1].ready === false)
+ok('装没装都不抛错（探测失败退化为「未安装」）', detected.every((t) => typeof t.installed === 'boolean'))
+
+const tunLinks = tunnelLinks(
+  [
+    { kind: 'tailscale', label: 'Tailscale', installed: true, ready: true, address: '100.101.102.103', installUrl: 'x', hint: 'h' },
+    {
+      kind: 'cloudflare',
+      label: 'Cloudflare',
+      installed: true,
+      ready: false,
+      address: '',
+      installUrl: 'x',
+      hint: 'h',
+      command: 'cloudflared tunnel --url http://127.0.0.1:{{PORT}}',
+    },
+  ],
+  { port: 8765, code: 'ab12cd34', pairPath: '/__kxxy_pair', label: '工作室的 Mac' },
+)
+ok(
+  '就绪的通道拼出完整连接串（含编码后的机器名）',
+  tunLinks[0].url ===
+    'http://100.101.102.103:8765/__kxxy_pair?code=ab12cd34&label=%E5%B7%A5%E4%BD%9C%E5%AE%A4%E7%9A%84%20Mac',
+  tunLinks[0].url,
+)
+ok('未就绪的通道不给 url', tunLinks[1].url === '', tunLinks[1].url)
+ok(
+  '命令里的端口占位符被换成真实端口',
+  tunLinks[1].command.includes('8765') && !tunLinks[1].command.includes('{{PORT}}'),
+  tunLinks[1].command,
+)
+ok(
+  '配对码做了 URL 编码',
+  tunnelLinks([{ ready: true, address: '1.2.3.4' }], { port: 1, code: 'a&b=c', pairPath: '/p', label: 'x' })[0].url.includes(
+    'code=a%26b%3Dc',
+  ),
+)
+
 // ── 汇总 ──────────────────────────────────────────────────────────────────
 const summary = `\n${lines.join('\n')}\n\n结论：${pass} 通过 / ${fail} 失败\n`
 process.stdout.write(summary)
