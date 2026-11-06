@@ -20,6 +20,31 @@ const MOCK = {
     { iface: 'WLAN', address: '192.168.2.86' },
     { iface: 'Tailscale', address: '100.88.4.12' },
   ],
+  // 一好一坏：覆盖「可用」（有地址有复制）和「未安装」（只有说明和下载链接）两种形态。
+  tunnels: [
+    {
+      kind: 'tailscale',
+      label: 'Tailscale',
+      installed: true,
+      ready: true,
+      address: '100.88.4.12',
+      installUrl: 'https://tailscale.com/download',
+      hint: '手机装同一个 Tailscale 账号，在外网也能直接连这个地址。',
+      url: 'http://100.88.4.12:8765/__dshrl_pair?code=a1b2c3d4&label=%E5%B7%A5%E4%BD%9C%E5%AE%A4',
+      command: '',
+    },
+    {
+      kind: 'cloudflare',
+      label: 'Cloudflare 隧道',
+      installed: false,
+      ready: false,
+      address: '',
+      installUrl: 'https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/',
+      hint: '装 cloudflared 之后可以在电脑上起一条临时隧道，手机不用装任何东西。',
+      url: '',
+      command: 'cloudflared tunnel --url http://127.0.0.1:8765',
+    },
+  ],
   upstream: { authority: '127.0.0.1:53219', ok: true, checkedAt: Date.now() },
   devices: [
     { key: 'k1', ip: '192.168.2.31', ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2) AppleWebKit/605.1.15 Safari/604.1', firstSeen: Date.now() - 3600_000, lastSeen: Date.now() - 4000, requests: 412, live: 2 },

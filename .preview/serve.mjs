@@ -69,6 +69,13 @@ const HTML = `<!doctype html>
 <script src="/driver.js"></script>
 <script>window.__preview(new URLSearchParams(location.search).get('variant'));</script>
 <script>
+  // ?zoom=1.8 —— 截图核对细节用。面板本身不缩放，这只是预览页的事。
+  (function () {
+    var z = new URLSearchParams(location.search).get('zoom');
+    if (z) document.documentElement.style.zoom = z;
+  })();
+</script>
+<script>
   // 溢出诊断：把「比视口宽」的元素找出来写进 title，便于 headless 抓取。
   setTimeout(() => {
     const vw = document.documentElement.clientWidth
