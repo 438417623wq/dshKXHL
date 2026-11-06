@@ -1,0 +1,46 @@
+{
+  "name": "dsh-remote-link",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DSH 桌面端插件：把「手机远程接入电脑」变成一块可视化面板 —— 一键开关接入服务、配对码与二维码、已连设备与断开。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "build:client": "node scripts/build-client.mjs",
+    "selftest": "node scripts/selftest.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "remote",
+    "deepseek-harness"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-connection"
+      ]
+    }
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "qrcode-generator": "^2.0.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

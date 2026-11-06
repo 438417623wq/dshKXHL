@@ -1,0 +1,8 @@
+# dsh-remote-link 的配置包补丁：在空配置根上追加本插件这一行。
+#
+# ⚠️ `id` 与包名无关，是别的 patch 引用本行的稳定锚点；`name` 才是要加载的
+#    模块名，必须与 package.json 的 `name` 完全一致（宿主按加载行的包名
+#    建 client entry id，两边不一致时页面永远等不到 bundle，且没有任何报错）。
+- insert:
+    - id: remote-link
+      name: 'dsh-remote-link'
