@@ -1,4 +1,7 @@
 node_modules/
-.preview/
 *.log
 package.json.bak-*
+
+# 本地预览的中间产物（脚本本身要提交，README 里引用了）
+.preview/shots/
+.preview/react.bundle.js
