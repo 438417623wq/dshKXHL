@@ -165,7 +165,12 @@ eq('host inject 声明', hostMod.inject, ['webServer', 'connection'])
 
 // 假上游：模拟 DSH webServer。
 const upstream = http.createServer((req, res) => {
-  res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'x-upstream-host': String(req.headers.host) })
+  res.writeHead(200, {
+    'content-type': 'text/plain; charset=utf-8',
+    'x-upstream-host': String(req.headers.host),
+    'x-upstream-origin': String(req.headers.origin || ''),
+    'x-upstream-referer': String(req.headers.referer || ''),
+  })
   res.end(`UPSTREAM OK ${req.url}`)
 })
 await new Promise((r) => upstream.listen(0, '127.0.0.1', r))
@@ -264,6 +269,17 @@ const paired = await hit('/', { cookie })
 eq('有 cookie → 200', paired.status, 200)
 ok('拿到上游内容', paired.body.includes('UPSTREAM OK'))
 eq('转发时 Host 改回上游', paired.headers['x-upstream-host'], `127.0.0.1:${upstreamPort}`)
+
+// Origin 必须一起改写：手机看到的 origin 是 http://<局域网 IP>:<端口>，而改过
+// Host 之后上游认为自己在 127.0.0.1:<port>。上游只要有一处「Origin 必须与 Host
+// 同源」的比对，只改 Host 就会把真机挡在门外，而本机自测永远同源、炸不出来。
+const withOrigin = await hit('/', {
+  cookie,
+  origin: `http://192.168.2.86:${TEST_PORT}`,
+  referer: `http://192.168.2.86:${TEST_PORT}/kxxy?x=1`,
+})
+eq('转发时 Origin 改写为上游源', withOrigin.headers['x-upstream-origin'], `http://127.0.0.1:${upstreamPort}`)
+eq('referer 只替换 origin、保留路径', withOrigin.headers['x-upstream-referer'], `http://127.0.0.1:${upstreamPort}/kxxy?x=1`)
 
 const afterHit = await rpc('status')
 ok('设备台账记到了这台设备', afterHit.value.devices.length >= 1, JSON.stringify(afterHit.value.devices))
